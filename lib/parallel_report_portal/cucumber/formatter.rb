@@ -1,4 +1,10 @@
 require_relative 'report'
+require_relative '../clock'
+require_relative '../configuration'
+require_relative '../file_utils'
+require_relative '../http'
+require_relative '../version'
+require_relative '../../parallel_report_portal'
 
 module ParallelReportPortal
   module Cucumber

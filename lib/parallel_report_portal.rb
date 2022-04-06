@@ -30,6 +30,16 @@ module ParallelReportPortal
     if ParallelReportPortal.parallel?
       if ParallelTests.first_process?
         ParallelTests.wait_for_other_processes_to_finish
+        ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.launch_id_file, 'r') do |file|
+          launch_id = file.readline
+          launch_info = ParallelReportPortal.req_launch_info(launch_id)
+          if launch_info
+            puts "\n----------------------------------------\n"
+            puts "Execution completed, find the report at: \n"
+            puts "\n#{configuration.endpoint.gsub("api/v1", "ui")}/##{configuration.project}/launches/all/#{launch_info['id']}/"
+            puts "\n----------------------------------------\nSummary:\n"
+          end
+        end
         delete_file(launch_id_file)
         delete_file(hierarchy_file)
       end

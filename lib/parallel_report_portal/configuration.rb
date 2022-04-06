@@ -60,7 +60,8 @@ module ParallelReportPortal
     # working directory (the former takes precidence). It will then apply
     # any of the environment variable values.
     def initialize
-      load_configuration_file
+      # MATIAS.NUNEZ = Commented out load of configuration file, to avoid having to mess up docker permissions
+      #load_configuration_file
       ATTRIBUTES.each do |attr|
         env_value = get_env("rp_#{attr.to_s}")
         send(:"#{attr}=", env_value) if env_value

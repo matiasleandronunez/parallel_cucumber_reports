@@ -228,5 +228,18 @@ module ParallelReportPortal
         end
       end
     end
+
+    # Requests Report Portal a launch
+    #
+    # @param uuid [string] UUID of the launch to get
+    def req_launch_info(uuid)
+      resp = ParallelReportPortal.http_connection.get("launch/uuid/#{uuid}")
+
+      if resp.success?
+        JSON.parse(resp.body)
+      else
+        @@logger.error("Failed fetching information for report #{uuid}")
+      end
+    end
   end
 end
