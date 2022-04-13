@@ -124,7 +124,7 @@ module ParallelReportPortal
           end
         elsif !hook?(test_step)
           step_source = lookup_step_source(test_step)
-          detail = "#{step_source.text}"
+          detail = "#{step_source.keyword} #{test_step}"
         end
         ParallelReportPortal.req_log(@test_case_id, detail, status_to_level(status), clock) if detail
 
