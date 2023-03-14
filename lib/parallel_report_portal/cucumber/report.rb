@@ -1,5 +1,6 @@
 require 'faraday'
 require 'tree'
+require 'digest'
 
 module ParallelReportPortal
   module Cucumber
@@ -25,8 +26,9 @@ module ParallelReportPortal
       # Create a new instance of the report
       def initialize(ast_lookup = nil)
         @feature = nil
-        @tree = Tree::TreeNode.new( 'root' ) 
+        @tree = Tree::TreeNode.new( 'root' )
         @ast_lookup = ast_lookup
+        ParallelReportPortal.set_debug_level
       end
       
       # Issued to start a launch. It is possilbe that this method could be called
@@ -45,7 +47,7 @@ module ParallelReportPortal
             file.write(@launch_id)
             file.flush
           else
-             @launch_id = file.readline
+            @launch_id = file.readline
           end
           @launch_id
         end
@@ -77,10 +79,10 @@ module ParallelReportPortal
       end
             
       def test_case_started(event, clock)
-        test_case = lookup_test_case(event.test_case)
+        uuid, test_case = lookup_test_case(event.test_case)
         feature = lookup_feature(event.test_case)
         feature = current_feature(feature, clock)
-        @test_case_id = ParallelReportPortal.req_test_case_started(launch_id, feature.id, test_case, clock)
+        @test_case_id = ParallelReportPortal.req_test_case_started(launch_id, feature.id, test_case, clock, uuid)
       end
       
       def test_case_finished(event, clock)
@@ -177,12 +179,12 @@ module ParallelReportPortal
         if using_cucumber_messages?
           sc = @ast_lookup.scenario_source(test_case)
           if sc.respond_to?(:scenario)
-            @ast_lookup.scenario_source(test_case).scenario
+            [nil, @ast_lookup.scenario_source(test_case).scenario]
           else
-            @ast_lookup.scenario_source(test_case).scenario_outline
+            [generate_id_for_scenario_example(test_case), @ast_lookup.scenario_source(test_case).scenario_outline]
           end
         else
-          test_case
+          [nil, test_case]
         end
       end
 
@@ -223,8 +225,11 @@ module ParallelReportPortal
           LOG_LEVELS.fetch(status, LOG_LEVELS[:info])
         end
       end
-      
-    
+
+      def generate_id_for_scenario_example(test_case)
+        steps_as_txt = test_case.test_steps.map(&:text).join('. ')
+        Digest::SHA1.hexdigest(steps_as_txt)
+      end
     end
   end
 end

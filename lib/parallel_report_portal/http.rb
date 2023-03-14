@@ -8,11 +8,20 @@ module ParallelReportPortal
 
     # Creating class level logger and setting log level
     @@logger = Logger.new(STDOUT)
-    @@logger.level = Logger::ERROR
 
-    # Construct the Report Portal project URL (as a string) based 
+    def set_debug_level
+      @@logger.level = case ParallelReportPortal.configuration.verbose
+                       when 0, '0', nil
+                         Logger::ERROR
+                       when 2, '2'
+                         Logger::DEBUG
+                       else
+                         Logger::INFO
+      end
+    end
+    # Construct the Report Portal project URL (as a string) based
     # on the config settings.
-    # 
+
     # @return [String] URL the report portal base URL
     def url
       "#{ParallelReportPortal.configuration.endpoint}/#{ParallelReportPortal.configuration.project}"
@@ -83,6 +92,8 @@ module ParallelReportPortal
               }.to_json
             end
       if resp.success?
+        @@logger.info("HTTP200 | Launch started")
+        @@logger.debug("Launch name"" #{ParallelReportPortal.configuration.launch}\nTags: #{ParallelReportPortal.configuration.tags}\nDescription: #{ParallelReportPortal.configuration.description}\nMode: #{ParallelReportPortal.configuration.debug}\nAttributes: #{ParallelReportPortal.configuration.attributes}")
         JSON.parse(resp.body)['id']
       else
         @@logger.error("Launch failed with response code #{resp.status} -- message #{resp.body}")
@@ -92,9 +103,11 @@ module ParallelReportPortal
     # Send a request to Report Portal to finish a launch.
     # It will bubble up any Faraday connection exceptions.
     def req_launch_finished(launch_id, time)
-      ParallelReportPortal.http_connection.put("launch/#{launch_id}/finish") do |req|
+      resp = ParallelReportPortal.http_connection.put("launch/#{launch_id}/finish") do |req|
         req.body = { end_time: time }.to_json
       end
+      @@logger.info("HTTP200 | Launch finished #{launch_id}") if resp.success?
+      resp
     end
     
     # Send a request to ReportPortal to start a feature.
@@ -102,11 +115,11 @@ module ParallelReportPortal
     # 
     # @return [String] id the UUID of the feature
     def req_feature_started(launch_id, parent_id, feature, time)
-        description = if feature.description
-                        feature.description.split("\n").map(&:strip).join(' ')
-                      else
-                        feature.file
-                      end
+      description = if feature.description
+                      feature.description.split("\n").map(&:strip).join(' ')
+                    else
+                      feature.file
+                    end
 
         req_hierarchy(launch_id,
                       "#{feature.keyword}: #{feature.name}",
@@ -136,6 +149,8 @@ module ParallelReportPortal
       end
       
       if resp.success?
+        @@logger.info("HTTP200 | Added item hierarchy #{type}")
+        @@logger.debug("Parent: #{parent}\nName: #{name}\nTags: #{tags}")
         JSON.parse(resp.body)['id']
       else
         @@logger.warn("Starting a heirarchy failed with response code #{resp.status} -- message #{resp.body}")
@@ -144,15 +159,17 @@ module ParallelReportPortal
   
     # Send a request to Report Portal that a feature has completed.
     def req_feature_finished(feature_id, time)
-      ParallelReportPortal.http_connection.put("item/#{feature_id}") do |req|
+      resp = ParallelReportPortal.http_connection.put("item/#{feature_id}") do |req|
         req.body = { end_time: time }.to_json
       end
+      @@logger.info("HTTP200 | Feature finished #{feature_id}") if resp.success?
+      resp
     end
   
     # Send a request to ReportPortal to start a test case.
     # 
     # @return [String] uuid the UUID of the test case
-    def req_test_case_started(launch_id, feature_id, test_case, time)
+    def req_test_case_started(launch_id, feature_id, test_case, time, uuid = nil)
       resp = ParallelReportPortal.http_connection.post("item/#{feature_id}") do |req|
 
         keyword = if test_case.respond_to?(:feature)
@@ -160,18 +177,41 @@ module ParallelReportPortal
                   else
                     test_case.keyword
                   end
-        req.body = {
-          start_time: time,
-          tags: test_case.tags.map(&:name),
-          name: "#{keyword}: #{test_case.name}",
-          type: 'STEP',
-          launch_id: launch_id,
-          description: test_case.description,
-          attributes: test_case.tags.map(&:name)
-        }.to_json
+
+        req.body = if uuid
+                     {
+                       uniqueId: uuid,
+                       start_time: time,
+                       tags: test_case.tags.map(&:name),
+                       name: "#{keyword}: #{test_case.name}",
+                       type: 'STEP',
+                       launch_id: launch_id,
+                       description: test_case.description,
+                       attributes: test_case.tags.map(&:name),
+                       retry: true
+                     }.to_json
+                   else
+                     {
+                       start_time: time,
+                       tags: test_case.tags.map(&:name),
+                       name: "#{keyword}: #{test_case.name}",
+                       type: 'STEP',
+                       launch_id: launch_id,
+                       description: test_case.description,
+                       attributes: test_case.tags.map(&:name),
+                       retry: true
+                     }.to_json
+                   end
       end
       if resp.success?
-        @test_case_id = JSON.parse(resp.body)['id'] if resp.success?
+        @test_case_id = JSON.parse(resp.body)['id']
+        @@logger.info("HTTP200 | Test case started #{@test_case_id}")
+        @@logger.debug("Feature ID: #{feature_id}\nName: #{test_case.name}\n Attributes/Tags: #{test_case.tags.map(&:name)}")
+        begin
+          #@@logger.warn(test_case.iteration_value) if test_case.name == '[3198] Prices in PDP should be available in the correct currency depending on the region'
+        rescue NoMethodError
+        end
+        @test_case_id
       else
         @@logger.warn("Starting a test case failed with response code #{resp.status} -- message #{resp.body}")
       end
@@ -185,6 +225,8 @@ module ParallelReportPortal
           status: status
         }.to_json
       end
+      @@logger.info("HTTP200 | Test case finished #{@test_case_id}") if resp.success?
+      resp
     end
     
     
@@ -198,6 +240,8 @@ module ParallelReportPortal
           time: time,
         }.to_json
       end
+      @@logger.debug("HTTP200 | Log posted for test case #{test_case_id}") if resp.success?
+      resp
     end
 
 
@@ -226,6 +270,8 @@ module ParallelReportPortal
             file: Faraday::UploadIO.new(file, mime_type)
           }
         end
+        @@logger.info("HTTP200 | File attached to Test case #{@test_case_id}") if resp.success?
+        resp
       end
     end
 
