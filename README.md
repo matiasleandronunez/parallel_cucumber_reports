@@ -54,6 +54,7 @@ It will search for the following environment variables which may be in upper or 
 - `RP_DESCRIPTION` - _optional_ a textual description of the launch
 - `RP_TAGS` - _optional_ a string of comma separated tags
 - `RP_ATTRIBUTES` - _optional_ a string of comma separated attributes
+- `RP_VERBOSE` - _optional_ an int, specifying the desired debug level for request to RP. Values: 0 (Error), 1 (Info), 2 (Debug) 
 
 ### With cucumber
 
