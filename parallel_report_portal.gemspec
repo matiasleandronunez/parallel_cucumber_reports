@@ -5,19 +5,19 @@ require "parallel_report_portal/version"
 Gem::Specification.new do |spec|
   spec.name          = "parallel_report_portal"
   spec.version       = ParallelReportPortal::VERSION
-  spec.authors       = ["Nigel Brookes-Thomas", "Thomas Feathers"]
-  spec.email         = ["nigel.brookes-thomas@dvla.gov.uk"]
+  spec.authors       = ["Matias Leandro Nunez"]
+  spec.email         = ["matias.nunez@mejuri.com"]
 
   spec.summary       = %q{Run Cucumber Tests in parallel and with Cucumber 3 and 4+}
   spec.description   = %q{A Cucumber formatter which integrates with Report Portal and supports both the parallel_tests gem and cucumber-messages}
-  spec.homepage      = "https://github.com/dvla/dvla-reportportal-ruby"
+  spec.homepage      = "https://github.com/matias-nunez/dvla-reportportal-ruby"
 
   spec.license     = 'MIT'
 
   # spec.metadata["allowed_push_host"] = ""
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/dvla/dvla-reportportal-ruby"
+  spec.metadata["source_code_uri"] = "https://github.com/matias-nunez/dvla-reportportal-ruby"
   # spec.metadata["changelog_uri"] = "TODO: Put your gem's CHANGELOG.md URL here."
 
   # Specify which files should be added to the gem when it is released.

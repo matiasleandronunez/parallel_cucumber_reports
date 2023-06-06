@@ -22,7 +22,7 @@ module ParallelReportPortal
   # RP_TAGS:: A set of tags to pass to Report Portal for this launch. If these are set via an environment variable, provide a comma-separated string of tags
   # RP_ATTRIBUTES:: A set of attribute tags to pass to Report Portal for this launch. If these are set via an environment variable, provide a comma-separated string of attributes
   class Configuration
-    ATTRIBUTES = [:uuid, :endpoint, :project, :launch, :debug, :description, :tags, :attributes, :open_timeout, :idle_timeout, :read_timeout]
+    ATTRIBUTES = [:uuid, :endpoint, :project, :launch, :debug, :description, :tags, :attributes, :open_timeout, :idle_timeout, :read_timeout, :verbose]
 
     # @return [String] the Report Portal user UUID
     attr_accessor :uuid
@@ -51,7 +51,8 @@ module ParallelReportPortal
     attr_accessor :idle_timeout
     # @return [Integer] the number of seconds for the read connection to timeout
     attr_accessor :read_timeout
-
+    # @return [Integer] the verbose level for console output.
+    attr_accessor :verbose
 
     # Create an instance of Configuration.
     #
