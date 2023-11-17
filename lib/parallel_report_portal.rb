@@ -33,7 +33,7 @@ module ParallelReportPortal
         ParallelTests.wait_for_other_processes_to_finish
         ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.launch_id_file, 'r') do |file|
           launch_id = file.readline
-          launch_info = ParallelReportPortal.req_launch_info(launch_id)
+          launch_info = ParallelReportPortal.req_launch_info(launch_id) if configuration.output_type == 'rp'
 
           if launch_info
             launch_info['uri'] = "#{configuration.endpoint.gsub("api/v1", "ui")}/##{configuration.project}/launches/all/#{launch_info['id']}/"

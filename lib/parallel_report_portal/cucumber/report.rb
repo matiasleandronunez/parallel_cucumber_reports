@@ -7,22 +7,22 @@ module ParallelReportPortal
     # Report object. This handles the management of the state hierarchy and
     # the issuing of the requests to the HTTP module. 
     class Report
-      
+
       attr_reader :launch_id
-      
+
       Feature = Struct.new(:feature, :id)
-      
-      LOG_LEVELS = { 
-        error: 'ERROR', 
-        warn: 'WARN', 
-        info: 'INFO', 
-        debug: 'DEBUG', 
-        trace: 'TRACE', 
-        fatal: 'FATAL', 
-        unknown: 'UNKNOWN' 
+
+      LOG_LEVELS = {
+        error: 'ERROR',
+        warn: 'WARN',
+        info: 'INFO',
+        debug: 'DEBUG',
+        trace: 'TRACE',
+        fatal: 'FATAL',
+        unknown: 'UNKNOWN'
       }
 
-      
+
       # Create a new instance of the report
       def initialize(ast_lookup = nil)
         @feature = nil
@@ -30,7 +30,7 @@ module ParallelReportPortal
         @ast_lookup = ast_lookup
         ParallelReportPortal.set_debug_level
       end
-      
+
       # Issued to start a launch. It is possilbe that this method could be called
       # from multiple processes for the same launch if this is being run with
       # parallel tests enabled. A temporary launch file will be created (using
@@ -43,7 +43,7 @@ module ParallelReportPortal
       def launch_started(start_time)
         ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.launch_id_file, 'a+' ) do |file|
           if file.size == 0
-            @launch_id = ParallelReportPortal.req_launch_started(start_time)
+            @launch_id = ParallelReportPortal.configuration.output_type == 'rp' ? ParallelReportPortal.req_launch_started(start_time) : 9999
             file.write(@launch_id)
             file.flush
           else
@@ -52,39 +52,114 @@ module ParallelReportPortal
           @launch_id
         end
       end
-      
+
       # Called to finish a launch. Any open children items will be closed in the process.
       # 
       # @param clock [Integer] the millis from the epoch
       def launch_finished(clock)
         @tree.postordered_each do |node|
-          ParallelReportPortal.req_feature_finished(node.content, clock) unless node.is_root?
+          ParallelReportPortal.req_feature_finished(node.content, clock) if ParallelReportPortal.configuration.output_type == 'rp' and !node.is_root?
         end
-        ParallelReportPortal.req_launch_finished(launch_id, clock)
+        ParallelReportPortal.req_launch_finished(launch_id, clock) unless ParallelReportPortal.configuration.output_type != 'rp'
       end
-      
+
       # Called to indicate that a feature has started.
       # 
       # @param 
       def feature_started(feature, clock)
-        parent_id = hierarchy(feature, clock)
-        feature = feature.feature if using_cucumber_messages?
-        ParallelReportPortal.req_feature_started(launch_id, parent_id, feature, clock)
+
+        if ParallelReportPortal.configuration.output_type == 'rp'
+          parent_id = hierarchy(feature, clock)
+          feature = feature.feature if using_cucumber_messages?
+          ParallelReportPortal.req_feature_started(launch_id, parent_id, feature, clock)
+        end
       end
-      
+
       def feature_finished(clock)
-        if @feature
+        if @feature and ParallelReportPortal.configuration.output_type == 'rp'
           resp = ParallelReportPortal.req_feature_finished(@feature.id, clock)
         end
       end
-            
+
       def test_case_started(event, clock)
         uuid, test_case = lookup_test_case(event.test_case)
         feature = lookup_feature(event.test_case)
-        feature = current_feature(feature, clock)
-        @test_case_id = ParallelReportPortal.req_test_case_started(launch_id, feature.id, test_case, clock, uuid)
+
+        if ParallelReportPortal.configuration.output_type == 'rp'
+          feature = current_feature(feature, clock)
+          @test_case_id = ParallelReportPortal.req_test_case_started(launch_id, feature.id, test_case, clock, uuid)
+        else
+          ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.hierarchy_file, 'a+b' ) do |file|
+            @tree = Marshal.load(File.read(file)) if file.size > 0
+            root_node = @tree.root
+
+            feature_node = look_up_node_in_tree(generate_id_for_feature(feature))
+
+            if feature_node.nil? or (feature_node.is_a? Array and feature_node.empty?)
+              feature_node = Tree::TreeNode.new(
+                name= generate_id_for_feature(feature),
+                content= {
+                  unique_id: generate_id_for_feature(feature),
+                  type: "Feature",
+                  name:feature.uri
+                }
+              )
+              root_node.add(feature_node, -1)
+            end
+
+
+            new_node = Tree::TreeNode.new(
+              name= generate_id_for_scenario(test_case),
+              content= {
+                unique_id: generate_id_for_scenario(test_case),
+                type: "TestCase",
+                name:test_case.name
+              }
+            )
+
+          if test_case.keyword.include? 'Outline'
+            test_case.steps.each do |step|
+                test_case.examples.each do |example|
+                  example.table_body.each do |row|
+                    new_node.add(
+                      Tree::TreeNode.new(
+                        name= generate_id_for_step(feature.uri, row.location.line.to_s + step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes
+                        content= {
+                          unique_id: step.id,
+                          type: "TestStep",
+                          name: step.text
+                        }), -1
+                    )
+                  end
+                end
+            end
+          else
+            test_case.steps.each do |step|
+              new_node.add(
+                Tree::TreeNode.new(
+                name= generate_id_for_step(feature.uri, step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes, locatiuon is step line + used example line
+                content= {
+                  unique_id: step.id,
+                  type: "TestStep",
+                  name: step.text
+                }), -1
+              )
+            end
+          end
+
+            if feature_node
+              feature_node.add(new_node, -1)
+            else
+              #Orphan test case?
+              root_node.add(new_node, -1)
+            end
+            file.truncate(0)
+            file.write(Marshal.dump(@tree))
+            file.flush
+          end
+        end
       end
-      
+
       def test_case_finished(event, clock)
         result = event.result
         status = result.to_sym
@@ -93,9 +168,35 @@ module ParallelReportPortal
           status = :failed
           failure_message = result.message
         end
-        resp = ParallelReportPortal.req_test_case_finished(@test_case_id, status, clock)
+
+        if ParallelReportPortal.configuration.output_type == 'rp'
+          resp = ParallelReportPortal.req_test_case_finished(@test_case_id, status, clock)
+        else
+          ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.hierarchy_file, 'a+b' ) do |file|
+            @tree = Marshal.load(File.read(file)) if file.size > 0
+            root_node = @tree.root
+            uuid, test_case = lookup_test_case(event.test_case)
+
+            scenario_tree_name = generate_id_for_scenario(test_case)
+            test_case_tree_node = look_up_node_in_tree(scenario_tree_name)
+
+
+            test_case_tree_node.content = {
+              unique_id: scenario_tree_name,
+              type: "TestCase",
+              name:test_case.name,
+              result: event.result,
+              status: status,
+              failure_message: failure_message
+            }
+
+            file.truncate(0)
+            file.write(Marshal.dump(@tree))
+            file.flush
+          end
+        end
       end
-      
+
       def test_step_started(event, clock)
         test_step = event.test_step
         if !hook?(test_step)
@@ -106,11 +207,13 @@ module ParallelReportPortal
           elsif (using_cucumber_messages? ? test_step : step_source).multiline_arg.data_table?
             detail << (using_cucumber_messages? ? test_step : step_source).multiline_arg.raw.reduce("\n") {|acc, row| acc << "| #{row.join(' | ')} |\n"}
           end
-          
-          ParallelReportPortal.req_log(@test_case_id, detail, status_to_level(:trace), clock)
+
+          if ParallelReportPortal.configuration.output_type == 'rp'
+            ParallelReportPortal.req_log(@test_case_id, detail, status_to_level(:trace), clock)
+          end
         end
       end
-      
+
       def test_step_finished(event, clock)
         test_step = event.test_step
         result = event.result
@@ -128,16 +231,40 @@ module ParallelReportPortal
           step_source = lookup_step_source(test_step)
           detail = "#{step_source.keyword} #{test_step}"
         end
-        ParallelReportPortal.req_log(@test_case_id, detail, status_to_level(status), clock) if detail
 
+        if detail and ParallelReportPortal.configuration.output_type == 'rp'
+          ParallelReportPortal.req_log(@test_case_id, detail, status_to_level(status), clock)
+        elsif !hook?(test_step)
+          ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.hierarchy_file, 'a+b' ) do |file|
+            @tree = Marshal.load(File.read(file)) if file.size > 0
+            root_node = @tree.root
+
+            if test_step.location.lines.to_s.include? ":" #meaning it has 2 line reference the example and the actual line where the step is
+              lines = test_step.location.lines.to_s.split(":")
+              step_node = look_up_node_in_tree(generate_id_for_step(test_step.location.file, lines[0].to_s + lines[1].to_s))
+            else
+              step_node = look_up_node_in_tree(generate_id_for_step(test_step.location.file, test_step.location.line.to_s))
+            end
+
+            step_node.content.merge!({
+                                       result:result,
+                                       status:status,
+                                       detail: detail
+                                     })
+
+            file.truncate(0)
+            file.write(Marshal.dump(@tree))
+            file.flush
+          end
+        end
       end
-    
+
       private
 
       def using_cucumber_messages?
         @ast_lookup != nil
       end
-      
+
       def hierarchy(feature, clock)
         node = nil
         path_components = if using_cucumber_messages?
@@ -146,7 +273,7 @@ module ParallelReportPortal
                             feature.location.file.split(File::SEPARATOR)
                           end
         ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.hierarchy_file, 'a+b' ) do |file|
-          @tree = Marshal.load(File.read(file)) if file.size > 0 
+          @tree = Marshal.load(File.read(file)) if file.size > 0
           node = @tree.root
           path_components[0..-2].each do |component|
             next_node = node[component]
@@ -163,7 +290,7 @@ module ParallelReportPortal
           file.write(Marshal.dump(@tree))
           file.flush
         end
-        
+
         node.content
       end
 
@@ -195,7 +322,7 @@ module ParallelReportPortal
           step.source.last
         end
       end
-      
+
       def current_feature(feature, clock)
         if @feature&.feature == feature
           @feature
@@ -204,7 +331,7 @@ module ParallelReportPortal
           @feature = Feature.new(feature, feature_started(feature, clock))
         end
       end
-      
+
       def hook?(test_step)
         if using_cucumber_messages?
           test_step.hook?
@@ -212,7 +339,7 @@ module ParallelReportPortal
           ! test_step.source.last.respond_to?(:keyword)
         end
       end
-      
+
       def status_to_level(status)
         case status
         when :passed
@@ -226,10 +353,43 @@ module ParallelReportPortal
         end
       end
 
+
+      def generate_id_for_feature(feature)
+        feature_as_text = feature.uri + feature.feature.location.line.to_s + feature.feature.location.column.to_s
+        Digest::SHA1.hexdigest(feature_as_text)
+      end
+
+      def generate_id_for_scenario(test_case)
+        scenario_as_txt = test_case.name + test_case.location.line.to_s + test_case.location.column.to_s +  test_case.steps.map(&:text).join('. ')
+        return Digest::SHA1.hexdigest(scenario_as_txt)
+      end
+
       def generate_id_for_scenario_example(test_case)
         steps_as_txt = test_case.test_steps.map(&:text).join('. ')
         Digest::SHA1.hexdigest(steps_as_txt)
       end
+
+      def generate_id_for_step(feature_file_as_string, feature_file_line_location)
+        step_as_txt = feature_file_as_string + feature_file_line_location
+        Digest::SHA1.hexdigest(step_as_txt)
+      end
+
+      def look_up_node_in_tree(unique_id)
+        return nil unless @tree.root.children?
+        to_discover = @tree.root.children
+
+        until to_discover.empty?
+          node = to_discover.shift
+          if node.name == unique_id
+            return node
+          else
+            (to_discover << node.children).flatten!
+          end
+        end
+
+        to_discover
+      end
+
     end
   end
 end
