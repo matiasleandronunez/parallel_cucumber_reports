@@ -107,52 +107,67 @@ module ParallelReportPortal
               root_node.add(feature_node, -1)
             end
 
+            is_outline = test_case.keyword.upcase.include? "OUTLINE"
 
-            new_node = Tree::TreeNode.new(
-              name= generate_id_for_scenario(test_case),
-              content= {
-                unique_id: generate_id_for_scenario(test_case),
-                type: "TestCase",
-                name:test_case.name
-              }
-            )
-
-          if test_case.keyword.include? 'Outline'
-            test_case.steps.each do |step|
-                test_case.examples.each do |example|
-                  example.table_body.each do |row|
-                    new_node.add(
-                      Tree::TreeNode.new(
-                        name= generate_id_for_step(feature.uri, row.location.line.to_s + step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes
-                        content= {
-                          unique_id: step.id,
-                          type: "TestStep",
-                          name: step.text
-                        }), -1
-                    )
-                  end
-                end
-            end
-          else
-            test_case.steps.each do |step|
-              new_node.add(
-                Tree::TreeNode.new(
-                name= generate_id_for_step(feature.uri, step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes, locatiuon is step line + used example line
+            new_node = look_up_node_in_tree(generate_id_for_scenario(test_case))
+            is_already_added = new_node.instance_of? Tree::TreeNode
+            unless is_already_added
+              new_node = Tree::TreeNode.new(
+                name= generate_id_for_scenario(test_case),
                 content= {
-                  unique_id: step.id,
-                  type: "TestStep",
-                  name: step.text
-                }), -1
+                  unique_id: generate_id_for_scenario(test_case),
+                  type: is_outline ? "TestCaseWithExamples" : "TestCase",
+                  name:test_case.name
+                }
               )
             end
-          end
 
-            if feature_node
+            if is_outline and not is_already_added
+              test_case.examples.each do |example|
+                example.table_body.each do |row|
+                  example_node = new_node.add(
+                    Tree::TreeNode.new(
+                      name= generate_id(feature.uri + row.location.line.to_s),
+                      content= {
+                        type: "Example",
+                        values: row.cells.map(&:value)
+                      }), -1
+                  )
+
+                  test_case.steps.each do |step|
+                    example_node.add(
+                        Tree::TreeNode.new(
+                          name= generate_id_for_step(feature.uri, row.location.line.to_s + step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes
+                          content= {
+                            unique_id: step.id,
+                            type: "TestStep",
+                            name: step.text
+                          }), -1
+                      )
+                    end
+                  end
+              end
+            else
+              test_case.steps.each do |step|
+                new_node.add(
+                  Tree::TreeNode.new(
+                  name= generate_id_for_step(feature.uri, step.location.line.to_s), #need these attributes to make it unique and be traceable for both Core and Message classes, locatiuon is step line + used example line
+                  content= {
+                    unique_id: step.id,
+                    type: "TestStep",
+                    name: step.text
+                  }), -1
+                )
+              end
+            end
+
+            if feature_node and not is_already_added
               feature_node.add(new_node, -1)
             else
               #Orphan test case?
               root_node.add(new_node, -1)
             end
+
             file.truncate(0)
             file.write(Marshal.dump(@tree))
             file.flush
@@ -183,8 +198,8 @@ module ParallelReportPortal
 
             test_case_tree_node.content = {
               unique_id: scenario_tree_name,
-              type: "TestCase",
-              name:test_case.name,
+              type: test_case_tree_node.content[:type],
+              name: test_case_tree_node.content[:name],
               result: event.result,
               status: status,
               failure_message: failure_message
@@ -225,7 +240,12 @@ module ParallelReportPortal
             detail = sprintf("%s: %s\n  %s", ex.class.name, ex.message, ex.backtrace.join("\n  "))
           elsif !hook?(test_step)
             step_source = lookup_step_source(test_step)
-            detail = sprintf("Undefined step: %s:\n%s", step_source.text, step_source.source.last.backtrace_line)
+            begin
+              back_line = step_source.source.last.backtrace_line
+            rescue NoMethodError
+              back_line = ""
+            end
+            detail = sprintf("Undefined step: #{step_source.text}:\n#{back_line}")
           end
         elsif !hook?(test_step)
           step_source = lookup_step_source(test_step)
@@ -366,12 +386,16 @@ module ParallelReportPortal
 
       def generate_id_for_scenario_example(test_case)
         steps_as_txt = test_case.test_steps.map(&:text).join('. ')
-        Digest::SHA1.hexdigest(steps_as_txt)
+        generate_id(steps_as_txt)
+      end
+
+      def generate_id(txt)
+        Digest::SHA1.hexdigest(txt)
       end
 
       def generate_id_for_step(feature_file_as_string, feature_file_line_location)
         step_as_txt = feature_file_as_string + feature_file_line_location
-        Digest::SHA1.hexdigest(step_as_txt)
+        generate_id(step_as_txt)
       end
 
       def look_up_node_in_tree(unique_id)
