@@ -53,5 +53,10 @@ module ParallelReportPortal
     def initialize(hierarchy_tree)
       super
     end
+
+    def results_as_string
+      results = self.execution_summary
+      "Scenarios Executed:#{results.map{|k,v| v}.sum} \nPassed: #{results[:passed]}\nFailed: #{results[:failed]}\nSkipped: #{results[:skipped]}\nPending: #{results[:pending]}\nOther: #{results[:other]}"
+    end
   end
 end

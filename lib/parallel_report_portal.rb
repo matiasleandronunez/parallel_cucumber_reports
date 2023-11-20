@@ -50,8 +50,11 @@ module ParallelReportPortal
             end
           else
             report_tree = Marshal.load(hierarchy_file.read)
-            t = ConsoleProcessor.new(report_tree)
-            t.execution_summary
+
+            if configuration.output_type == 'console'
+              t = ConsoleProcessor.new(report_tree)
+              puts t.results_as_string
+            end
           end
         end
         delete_file(launch_id_file)
