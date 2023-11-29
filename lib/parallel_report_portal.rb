@@ -33,28 +33,26 @@ module ParallelReportPortal
       if ParallelTests.first_process?
         ParallelTests.wait_for_other_processes_to_finish
         ParallelReportPortal.file_open_exlock_and_block(ParallelReportPortal.launch_id_file, 'r') do |file|
-          if configuration.output_type == 'rp'
-          launch_id = file.readline
-          launch_info = ParallelReportPortal.req_launch_info(launch_id)
-            if launch_info
-              launch_info['uri'] = "#{configuration.endpoint.gsub("api/v1", "ui")}/##{configuration.project}/launches/all/#{launch_info['id']}/"
-              begin
-                File.open(configuration.tempfile, "w") { |f| f.write launch_info.to_s.gsub("=>", ":").gsub("nil","null") }
-              rescue Errno::ENOENT
+          case configuration.output_type
+          when 'rp'
+            launch_id = file.readline
+            launch_info = ParallelReportPortal.req_launch_info(launch_id)
+              if launch_info
+                launch_info['uri'] = "#{configuration.endpoint.gsub("api/v1", "ui")}/##{configuration.project}/launches/all/#{launch_info['id']}/"
+                begin
+                  File.open(configuration.tempfile, "w") { |f| f.write launch_info.to_s.gsub("=>", ":").gsub("nil","null") }
+                rescue Errno::ENOENT
+                end
+
+                puts "\n----------------------------------------\n"
+                puts "Execution completed, find the report at: \n"
+                puts "\n#{launch_info['uri']}"
+                puts "\n----------------------------------------\nSummary:\n"
               end
-
-              puts "\n----------------------------------------\n"
-              puts "Execution completed, find the report at: \n"
-              puts "\n#{launch_info['uri']}"
-              puts "\n----------------------------------------\nSummary:\n"
-            end
+          when 'console_detailed'
+            puts ConsoleProcessor.new(Marshal.load(hierarchy_file.read)).detailed_results_as_string
           else
-            report_tree = Marshal.load(hierarchy_file.read)
-
-            if configuration.output_type == 'console'
-              t = ConsoleProcessor.new(report_tree)
-              puts t.results_as_string
-            end
+            puts ConsoleProcessor.new(Marshal.load(hierarchy_file.read)).results_as_string
           end
         end
         delete_file(launch_id_file)

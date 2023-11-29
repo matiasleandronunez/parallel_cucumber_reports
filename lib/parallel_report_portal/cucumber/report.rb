@@ -161,11 +161,13 @@ module ParallelReportPortal
               end
             end
 
-            if feature_node and not is_already_added
-              feature_node.add(new_node, -1)
-            else
-              #Orphan test case?
-              root_node.add(new_node, -1)
+            unless is_outline and is_already_added #do nothing, it's already added by a previous example
+              if feature_node and not is_already_added
+                feature_node.add(new_node, -1)
+              else
+                #Orphan test case?
+                root_node.add(new_node, -1)
+              end
             end
 
             file.truncate(0)

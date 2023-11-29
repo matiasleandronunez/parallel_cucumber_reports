@@ -42,4 +42,5 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency 'parallel_tests', '>= 2.29.1'
   spec.add_runtime_dependency 'rubytree', '~> 2.0.2'
   spec.add_runtime_dependency 'net-http-persistent', '~> 4.0'
+  spec.add_runtime_dependency 'colorize', '~> 1.1.0'
 end
