@@ -147,6 +147,7 @@ module ParallelReportPortal
                     end
                   end
               end
+            elsif is_outline and is_already_added #Is a retry, do nothing
             else
               test_case.steps.each do |step|
                 new_node.add(
