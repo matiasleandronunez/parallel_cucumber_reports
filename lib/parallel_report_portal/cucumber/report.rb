@@ -269,11 +269,25 @@ module ParallelReportPortal
               step_node = look_up_node_in_tree(generate_id_for_step(test_step.location.file, test_step.location.line.to_s))
             end
 
-            step_node.content.merge!({
-                                       result:result,
-                                       status:status,
-                                       detail: detail
-                                     })
+            if step_node.content[:status] #is a retry
+              if step_node.content[:attempt] #is not first retry?
+                attempt = step_node.content[:attempt] + 1
+              else
+                attempt = 1
+              end
+              step_node.content.merge!({
+                                         result:result,
+                                         status:status,
+                                         detail: detail,
+                                         attempt: attempt
+                                       })
+            else
+              step_node.content.merge!({
+                                         result:result,
+                                         status:status,
+                                         detail: detail
+                                       })
+            end
 
             file.truncate(0)
             file.write(Marshal.dump(@tree))

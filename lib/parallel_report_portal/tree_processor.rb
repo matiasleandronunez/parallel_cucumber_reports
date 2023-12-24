@@ -19,7 +19,7 @@ module ParallelReportPortal
       root_node.each do |node|
         next if node.name == "root" or node.content[:type] == "TestStep" or node.content[:type] == "Feature"
         if node.content[:type] == "TestCase"
-          node.content.merge!(:steps => node.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+          node.content.merge!(:steps => node.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
           case node.content[:result].to_s
           when "P"
             results[:pending].append(node.content)
@@ -36,19 +36,19 @@ module ParallelReportPortal
           node.children.select { |x| x.content[:type] == "Example"}.each do |example|
             steps_status = example.children.map{|x| x.content[:status]}
             if steps_status.all? {|s| s == :passed}
-              example.content.merge!(status: :passed, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+              example.content.merge!(status: :passed, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
               results[:passed].append(example.content)
             elsif steps_status.any? {|s| s == :failed}
-              example.content.merge!(status: :failed, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+              example.content.merge!(status: :failed, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
               results[:failed].append(example.content)
             elsif steps_status.all? {|s| s == :passed or s == :skipped}
-              example.content.merge!(status: :skipped, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+              example.content.merge!(status: :skipped, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
               results[:skipped].append(example.content)
             elsif steps_status.all? {|s| s == :passed or s == :pending or s == :skipped}
-              example.content.merge!(status: :pending, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+              example.content.merge!(status: :pending, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
               results[:pending].append(example.content)
             else
-              example.content.merge!(status: :other, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result]}})
+              example.content.merge!(status: :other, :name => node.content[:name], :steps => example.children.map{|e| {:name => e.content[:name],:detail=> e.content[:detail], :status => e.content[:status], :result => e.content[:result], :attempt => e.content[:attempt]}})
               results[:other].append(example.content)
             end
           end
@@ -103,7 +103,12 @@ module ParallelReportPortal
             when :other
               detail_s+="\t\t#{step[:name]}\n".magenta
             when :failed
-              detail_s+="\t\t#{step[:name]}\n#{step[:result].exception.message.gsub(/[\r\n]+/, "\n\t\t\t")}\n".red
+              case step[:attempt]
+              when nil
+                detail_s+="\t\t#{step[:name]}\n#{step[:result].exception.message.gsub(/[\r\n]+/, "\n\t\t\t")}\n".red
+              else
+                detail_s+="\t\t#{step[:name]}\tAttempts: #{step[:attempt]}\n#{step[:result].exception.message.gsub(/[\r\n]+/, "\n\t\t\t")}\n".red
+              end
             end
           end
         end
